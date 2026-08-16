@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      DATABASE_URL: sqlite:////data/app.db
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGINS: "*"
+      LLM_MODE: ${LLM_MODE:-auto}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    volumes:
+      - app-data:/data
+
+volumes:
+  app-data:
