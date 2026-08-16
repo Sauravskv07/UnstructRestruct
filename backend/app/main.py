@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -8,7 +10,7 @@ from app.api.access import router as access_router
 from app.api.documents import router as documents_router
 from app.api.patients import router as patients_router
 from app.api.queries import router as queries_router
-from app.config import REPO_ROOT, settings
+from app.config import BACKEND_ROOT, REPO_ROOT, settings
 from app.db.models import Base, Clinician
 from app.db.session import SessionLocal, engine
 
@@ -73,6 +75,10 @@ def _ensure_sqlite_columns() -> None:
 
 @app.on_event("startup")
 def startup() -> None:
+    upload_dir = Path(settings.upload_dir)
+    if not upload_dir.is_absolute():
+        upload_dir = BACKEND_ROOT / upload_dir
+    upload_dir.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_columns()
     db = SessionLocal()

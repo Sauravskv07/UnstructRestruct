@@ -3,6 +3,10 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+# Dockerfile CMD already binds 0.0.0.0 and reads Railway's PORT.
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+# SQLite is not safe with multiple replicas.
+numReplicas = 1

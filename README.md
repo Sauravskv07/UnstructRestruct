@@ -155,12 +155,18 @@ The pipeline still turns messy documents into queryable records. The UI is a **p
 5. Switch role → healthcare professional. Known demo ID `DOC-1001` uses password `demo`. Add the patient’s **username** plus the code.
 6. The clinician list, documents, queries, and uploads are limited to those shared patients.
 
-## Railway
+## Railway (public URL)
 
-1. Create a project from this repo (Railway detects `Dockerfile`).
-2. Add a volume mounted at `/data` so SQLite and uploads survive restarts.
-3. Set secrets: `OPENAI_API_KEY` (optional), `OPENAI_MODEL`, `LLM_MODE=auto`, `CORS_ORIGINS=*`, `DATABASE_URL=sqlite:////data/app.db`, `UPLOAD_DIR=/data/uploads`.
-4. `PORT` is set by Railway. Health check: `GET /health`.
+The repo is set up for one service: `Dockerfile` + `railway.toml`. Railway builds the UI, installs Tesseract, and serves FastAPI + the static app on `$PORT`.
+
+1. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo** → `Sauravskv07/UnstructRestruct` (or your fork). Leave the root directory empty.
+2. Open the service → **Settings** → **Networking** → **Generate Domain**. That URL is the site.
+3. **Variables** → add `GEMINI_API_KEY` (same value as local `.env`). Optional: `GEMINI_MODEL=gemini-flash-latest`. Do not commit the key.
+4. Wait for the deploy to go healthy (`GET /health`). Share the generated domain.
+
+You do **not** need to set `PORT`, `DATABASE_URL`, `UPLOAD_DIR`, or `CORS_ORIGINS` unless you want to override the image defaults. Keep **one replica** (SQLite).
+
+Optional: add a volume mounted at `/data` so the database and uploads survive redeploys. Without a volume, a new deploy starts with an empty chart.
 
 Do not upload real patient records to the public URL. Free tiers may cold-start slowly.
 
