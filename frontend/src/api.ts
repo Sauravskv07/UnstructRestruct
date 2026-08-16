@@ -148,6 +148,7 @@ export type CatalogItem = {
   id: string;
   label: string;
   in_chart: boolean;
+  score?: number;
 };
 
 export type ChartCatalog = {

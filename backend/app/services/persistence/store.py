@@ -12,6 +12,7 @@ from app.schemas.extracted import (
 )
 from app.services.linking.patients import LinkResult
 from app.services.validation.validate import Issue
+from app.services.vocab import DX, LAB, MED, observe
 
 
 def persist_canonical(
@@ -54,6 +55,7 @@ def persist_canonical(
                     validation_status=test.validation_status,
                 )
             )
+            observe(db, LAB, test.canonical_name, test.raw_name)
     elif isinstance(canonical, CanonicalPrescription):
         for med in canonical.medications:
             doc.medications.append(
@@ -76,6 +78,7 @@ def persist_canonical(
                     validation_status=med.validation_status,
                 )
             )
+            observe(db, MED, med.canonical_name, med.raw_name)
     elif isinstance(canonical, CanonicalDiagnosticReport):
         doc.diagnostic_report = models.DiagnosticReport(
             document_id=doc.id,
@@ -89,6 +92,7 @@ def persist_canonical(
             confidence=canonical.confidence,
             validation_status=canonical.validation_status,
         )
+        observe(db, DX, canonical.canonical_study, canonical.study)
 
     for issue in issues:
         doc.validation_errors.append(

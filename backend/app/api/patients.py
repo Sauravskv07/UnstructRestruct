@@ -10,19 +10,12 @@ from app.db.session import get_db
 from app.services import access as access_service
 from app.services.document_status import HIDDEN_FROM_CHART
 from app.services.normalization.names import (
-    MED_ALIASES,
-    MED_LABELS,
-    STUDY_ALIASES,
-    STUDY_LABELS,
-    TEST_ALIASES,
-    TEST_LABELS,
-    catalog_ids,
-    human_label,
     normalize_medication_name,
     normalize_study_name,
     normalize_test_name,
 )
 from app.services.timeline import cluster_timeline
+from app.services.vocab import DX, LAB, MED, chart_term_ids, search as search_vocab
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -133,6 +126,8 @@ def get_patient(
 @router.get("/{patient_id}/catalog")
 def patient_catalog(
     patient_id: str,
+    kind: str | None = None,
+    q: str = "",
     db: Session = Depends(get_db),
     x_app_role: str | None = Header(default=None),
     x_patient_id: str | None = Header(default=None),
@@ -142,18 +137,15 @@ def patient_catalog(
     if not patient:
         raise HTTPException(404, "patient not found")
     _require_view(db, patient_id, x_app_role, x_patient_id, x_clinician_id)
-    docs = [d for d in patient.documents if d.status not in HIDDEN_FROM_CHART]
-    chart_tests = {r.canonical_name for d in docs for r in d.lab_results if r.canonical_name}
-    chart_meds = {m.canonical_name for d in docs for m in d.medications if m.canonical_name}
-    chart_studies = {
-        d.diagnostic_report.canonical_study
-        for d in docs
-        if d.diagnostic_report and d.diagnostic_report.canonical_study
-    }
+    chart = _chart_term_ids(db, patient_id)
+    if kind:
+        if kind not in chart:
+            raise HTTPException(400, "kind must be lab_test, medication, or diagnostic")
+        return [_hit(item) for item in search_vocab(db, kind, q, chart[kind])]
     return {
-        "lab_tests": _catalog_items(TEST_ALIASES, TEST_LABELS, chart_tests),
-        "medications": _catalog_items(MED_ALIASES, MED_LABELS, chart_meds),
-        "diagnostics": _catalog_items(STUDY_ALIASES, STUDY_LABELS, chart_studies),
+        "lab_tests": [_hit(item) for item in search_vocab(db, LAB, q, chart[LAB])],
+        "medications": [_hit(item) for item in search_vocab(db, MED, q, chart[MED])],
+        "diagnostics": [_hit(item) for item in search_vocab(db, DX, q, chart[DX])],
     }
 
 
@@ -268,6 +260,36 @@ def patient_diagnostics(
     ]
 
 
+def _visible_rows(db: Session, model, patient_id: str):
+    return (
+        db.query(model)
+        .join(Document)
+        .filter(
+            Document.status.notin_(HIDDEN_FROM_CHART),
+            or_(model.patient_id == patient_id, Document.patient_id == patient_id),
+        )
+        .all()
+    )
+
+
+def _chart_term_ids(db: Session, patient_id: str) -> dict[str, set[str]]:
+    labs = _visible_rows(db, LabResult, patient_id)
+    meds = _visible_rows(db, Medication, patient_id)
+    studies = _visible_rows(db, DiagnosticReport, patient_id)
+    lab_tokens = {value for row in labs for value in (row.canonical_name, row.raw_name, normalize_test_name(row.raw_name))}
+    med_tokens = {value for row in meds for value in (row.canonical_name, row.raw_name, normalize_medication_name(row.raw_name))}
+    dx_tokens = {
+        value
+        for row in studies
+        for value in (row.canonical_study, row.study, normalize_study_name(row.study), normalize_study_name(row.canonical_study))
+    }
+    return {
+        LAB: chart_term_ids(db, LAB, lab_tokens),
+        MED: chart_term_ids(db, MED, med_tokens),
+        DX: chart_term_ids(db, DX, dx_tokens),
+    }
+
+
 def _in_range(value: str, date_from: str | None, date_to: str | None) -> bool:
     if date_from and value < date_from:
         return False
@@ -276,14 +298,8 @@ def _in_range(value: str, date_from: str | None, date_to: str | None) -> bool:
     return True
 
 
-def _catalog_items(aliases: dict[str, str], labels: dict[str, str], in_chart: set[str]) -> list[dict]:
-    keys = set(catalog_ids(aliases)) | in_chart
-    items = [
-        {"id": key, "label": human_label(key, labels), "in_chart": key in in_chart}
-        for key in keys
-    ]
-    items.sort(key=lambda item: (not item["in_chart"], item["label"].lower()))
-    return items
+def _hit(item) -> dict:
+    return {"id": item.id, "label": item.label, "in_chart": item.in_chart, "score": item.score}
 
 
 def _lab(row: LabResult) -> dict:

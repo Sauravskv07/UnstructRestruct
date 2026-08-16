@@ -1,6 +1,33 @@
-# Engineering decisions - shouldn't be updated by coding tool.
+# Engineering decisions
 
-This document records the choices that shape correctness, reliability, cost, and scope for this assignment MVP.
+## User workflow decisions
+
+- Login is **patient** or **clinician**; a patient sees only their chart, a clinician sees only patients who shared with them.
+- Sharing is a **username + 24-hour code**; a new code expires the old one; the patient can revoke.
+- Only **labs, prescriptions, and diagnostic reports** are in scope.
+- An unknown login id **creates an account**; the person on the chart is **name + phone**, not hospital MRN / `PAT-…`.
+- Upload **does not file until confirm**; extracted text and identity warnings are shown first; a mismatch is not attached to the selected chart.
+- Upload returns immediately and the UI **polls**; a second file can start while the first is still processing.
+- Timeline search is **this chart only**, but the name list is **global** and grows as documents are ingested.
+
+## Architecture decisions
+
+- An **explicit staged pipeline** (inspect → OCR/text → IR → classify → extract → normalize → validate → link → persist), each stage with a status and log.
+- **Local** PyMuPDF / Tesseract first; **Gemini vision** only when Tesseract is weak; **Gemini Flash** for classify/extract; **stub** when no key.
+- Normalize, validate, and link are **deterministic**; the model must not invent units, ranges, or merges.
+- **SQLite** holds canonical rows (not JSON-as-database); queries are SQL.
+- One **FastAPI** process serves API + built React UI; **Docker/Railway** is one container; no Celery.
+- Vocab for labs/meds/studies is a **global table** with RapidFuzz typeahead; aliases seed it, new reports extend it.
+
+## UX decisions
+
+- Role select, then a small set of pages: upload, documents, timeline, share — not a query console.
+- Timeline is **date-clustered**; prescriptions use one document date (follow-up dates out of scope).
+- Confirm screen is **extracted text + warnings**, then file or discard.
+- Search is **type-to-match** (fuzzy), not a fixed dropdown; results are typed tables with document links.
+- Same origin: production UI is static files from FastAPI, so the public URL is one site.
+
+---
 
 The product problem is: turn messy medical documents into structured, normalized, validated, linked, and queryable data. The domain I am selecting is medical.
 
@@ -696,14 +723,16 @@ A durable job queue, progress percentages, and cancelling an in-flight model cal
 
 Structured search lives on the **patient timeline page**, for both patient and clinician. There is no separate Query UI.
 
-The user picks a lookup type and a **canonical name** from a maintained catalog (lab tests, medications, diagnostic studies), or a date range. Results are typed:
+`GET /patients/{id}/catalog?kind=&q=` fuzzy-searches a **global** vocabulary (RapidFuzz) that grows as documents are ingested. Empty `q` lists names already on this chart. Results for the selected name stay chart-scoped.
+
+The user picks a lookup type and types a lab, medication, or diagnostic name. Suggestions come from every processed document plus a small alias seed (`Hb` → hemoglobin). Results are typed:
 
 - date range → clustered timeline
 - lab → value, unit, range, document link
 - medication → dose line and document link
 - diagnostic → study, impression, document link
 
-`GET /patients/{id}/catalog` unions the alias lists with names already on that chart. Global `/query/*` SQL endpoints remain for assignment proof; they are not the product UI.
+Global `/query/*` SQL endpoints remain for assignment proof; they are not the product UI.
 
 ## The alternatives
 

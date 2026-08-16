@@ -232,7 +232,7 @@ These read tables, not PDFs:
 - `GET /query/needs-review`
 - `GET /query/medications`
 
-The timeline page searches this chart: date range, lab test, medication, or diagnostic, using canonical name pickers. Results are tables or a filtered timeline, each row linking to the source document.
+The timeline page searches this chart: date range, or type a lab/medication/diagnostic name. Suggestions are a fuzzy match against a global list that grows as documents are processed. Results are tables or a filtered timeline, each row linking to the source document.
 
 ## Sample documents
 

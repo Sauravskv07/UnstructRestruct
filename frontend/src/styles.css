@@ -269,6 +269,37 @@ pre {
 .upload-actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
 .upload-actions button[type="submit"] { min-width: 180px; }
 
+.suggest { position: relative; }
+.suggest-list {
+  position: absolute;
+  z-index: 8;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: rgba(7, 16, 28, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  max-height: 260px;
+  overflow: auto;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+.suggest-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.suggest-item:hover { background: rgba(61, 126, 201, 0.16); }
+
 @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
   .network-lines path, .network-flow path, .network-nodes circle, .network-dot {

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -182,6 +182,26 @@ class ValidationError(Base):
     severity: Mapped[str] = mapped_column(String, default="error")
 
     document = relationship("Document", back_populates="validation_errors")
+
+
+class VocabularyTerm(Base):
+    __tablename__ = "vocabulary_terms"
+    __table_args__ = (UniqueConstraint("kind", "canonical", name="uq_vocab_kind_canonical"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String, index=True)
+    canonical: Mapped[str] = mapped_column(String, index=True)
+    label: Mapped[str] = mapped_column(String)
+
+
+class VocabularyAlias(Base):
+    __tablename__ = "vocabulary_aliases"
+    __table_args__ = (UniqueConstraint("kind", "alias_key", name="uq_vocab_kind_alias"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String, index=True)
+    alias_key: Mapped[str] = mapped_column(String)
+    canonical: Mapped[str] = mapped_column(String, index=True)
 
 
 class ShareCode(Base):

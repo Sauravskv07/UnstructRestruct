@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   api,
-  ChartCatalog,
+  CatalogItem,
   DiagnosticQueryRow,
   LabQueryRow,
   MedQueryRow,
@@ -13,19 +13,24 @@ import { loadSession } from "../session";
 
 type Mode = "timeline" | "lab" | "medication" | "diagnostic";
 
+const KIND: Record<Exclude<Mode, "timeline">, string> = {
+  lab: "lab_test",
+  medication: "medication",
+  diagnostic: "diagnostic",
+};
+
 export default function TimelinePage() {
   const { id } = useParams();
   const session = loadSession();
   const patientId = id ?? (session?.role === "patient" ? session.patientId : undefined);
   const [patient, setPatient] = useState<PatientDetail | null>(null);
-  const [catalog, setCatalog] = useState<ChartCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("timeline");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [test, setTest] = useState("");
-  const [med, setMed] = useState("");
-  const [study, setStudy] = useState("");
+  const [test, setTest] = useState<CatalogItem | null>(null);
+  const [med, setMed] = useState<CatalogItem | null>(null);
+  const [study, setStudy] = useState<CatalogItem | null>(null);
   const [labs, setLabs] = useState<LabQueryRow[] | null>(null);
   const [meds, setMeds] = useState<MedQueryRow[] | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticQueryRow[] | null>(null);
@@ -35,13 +40,7 @@ export default function TimelinePage() {
       setError("No patient selected.");
       return;
     }
-    api<ChartCatalog>(`/patients/${patientId}/catalog`)
-      .then(setCatalog)
-      .catch((err: Error) => setError(err.message));
-  }, [patientId]);
-
-  useEffect(() => {
-    if (!patientId || mode !== "timeline") return;
+    if (mode !== "timeline") return;
     const params = new URLSearchParams();
     if (dateFrom) params.set("from", dateFrom);
     if (dateTo) params.set("to", dateTo);
@@ -56,7 +55,7 @@ export default function TimelinePage() {
       if (mode !== "lab") setLabs(null);
       return;
     }
-    const params = new URLSearchParams({ test });
+    const params = new URLSearchParams({ test: test.id });
     api<LabQueryRow[]>(`/patients/${patientId}/lab-results?${params}`)
       .then(setLabs)
       .catch((err: Error) => setError(err.message));
@@ -67,7 +66,7 @@ export default function TimelinePage() {
       if (mode !== "medication") setMeds(null);
       return;
     }
-    const params = new URLSearchParams({ name: med });
+    const params = new URLSearchParams({ name: med.id });
     api<MedQueryRow[]>(`/patients/${patientId}/medications?${params}`)
       .then(setMeds)
       .catch((err: Error) => setError(err.message));
@@ -78,7 +77,7 @@ export default function TimelinePage() {
       if (mode !== "diagnostic") setDiagnostics(null);
       return;
     }
-    const params = new URLSearchParams({ study });
+    const params = new URLSearchParams({ study: study.id });
     api<DiagnosticQueryRow[]>(`/patients/${patientId}/diagnostics?${params}`)
       .then(setDiagnostics)
       .catch((err: Error) => setError(err.message));
@@ -93,7 +92,7 @@ export default function TimelinePage() {
   }
 
   if (!patientId) return <p className="badge err">No patient selected.</p>;
-  if (error && !patient && !catalog) return <p className="badge err">{error}</p>;
+  if (error && !patient && mode === "timeline") return <p className="badge err">{error}</p>;
   if (mode === "timeline" && !patient) return <p>Loading…</p>;
 
   return (
@@ -109,7 +108,7 @@ export default function TimelinePage() {
       )}
       <form className="card" onSubmit={(event) => event.preventDefault()}>
         <p className="muted" style={{ marginTop: 0 }}>
-          Search this chart using canonical lab, medication, and diagnostic names.
+          Type a lab, medication, or study name. Matches come from every document in the system, then this chart is filtered.
         </p>
         <div className="grid">
           <label>
@@ -137,63 +136,116 @@ export default function TimelinePage() {
               </label>
             </>
           )}
-          {mode === "lab" && (
-            <label>
-              Test
-              <select value={test} onChange={(e) => setTest(e.target.value)} required style={{ display: "block", width: "100%", marginTop: 6 }}>
-                <option value="">Select a test</option>
-                {(catalog?.lab_tests ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                    {item.in_chart ? "" : " (not on this chart yet)"}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {mode === "medication" && (
-            <label>
-              Medication
-              <select value={med} onChange={(e) => setMed(e.target.value)} required style={{ display: "block", width: "100%", marginTop: 6 }}>
-                <option value="">Select a medication</option>
-                {(catalog?.medications ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                    {item.in_chart ? "" : " (not on this chart yet)"}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {mode === "diagnostic" && (
-            <label>
-              Study
-              <select value={study} onChange={(e) => setStudy(e.target.value)} required style={{ display: "block", width: "100%", marginTop: 6 }}>
-                <option value="">Select a study</option>
-                {(catalog?.diagnostics ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                    {item.in_chart ? "" : " (not on this chart yet)"}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {mode !== "timeline" && (
+            <NameSearch
+              patientId={patientId}
+              kind={KIND[mode]}
+              label={mode === "lab" ? "Test" : mode === "medication" ? "Medication" : "Study"}
+              selected={mode === "lab" ? test : mode === "medication" ? med : study}
+              onSelect={mode === "lab" ? setTest : mode === "medication" ? setMed : setStudy}
+            />
           )}
         </div>
         {error && <p className="badge err">{error}</p>}
       </form>
       {mode === "timeline" && patient && <ClusteredTimeline patient={patient} />}
-      {mode === "lab" && labs && <LabResults name={catalogLabel(catalog?.lab_tests, test)} rows={labs} />}
-      {mode === "medication" && meds && <MedResults name={catalogLabel(catalog?.medications, med)} rows={meds} />}
+      {mode === "lab" && labs && <LabResults name={test?.label ?? test?.id ?? ""} rows={labs} />}
+      {mode === "medication" && meds && <MedResults name={med?.label ?? med?.id ?? ""} rows={meds} />}
       {mode === "diagnostic" && diagnostics && (
-        <DiagnosticResults name={catalogLabel(catalog?.diagnostics, study)} rows={diagnostics} />
+        <DiagnosticResults name={study?.label ?? study?.id ?? ""} rows={diagnostics} />
       )}
     </div>
   );
 }
 
-function catalogLabel(items: { id: string; label: string }[] | undefined, id: string) {
-  return items?.find((item) => item.id === id)?.label ?? id;
+function NameSearch({
+  patientId,
+  kind,
+  label,
+  selected,
+  onSelect,
+}: {
+  patientId: string;
+  kind: string;
+  label: string;
+  selected: CatalogItem | null;
+  onSelect: (item: CatalogItem | null) => void;
+}) {
+  const [text, setText] = useState(selected?.label ?? "");
+  const [hits, setHits] = useState<CatalogItem[]>([]);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLLabelElement>(null);
+
+  useEffect(() => {
+    setText(selected?.label ?? "");
+  }, [kind, selected?.id, selected?.label]);
+
+  useEffect(() => {
+    const q = text.trim();
+    if (selected && q === selected.label) {
+      setHits([]);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      const params = new URLSearchParams({ kind, q });
+      api<CatalogItem[]>(`/patients/${patientId}/catalog?${params}`)
+        .then((rows) => {
+          setHits(rows);
+          setOpen(true);
+        })
+        .catch(() => setHits([]));
+    }, 180);
+    return () => window.clearTimeout(handle);
+  }, [kind, patientId, text, selected]);
+
+  useEffect(() => {
+    function onDocClick(event: MouseEvent) {
+      if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  function choose(item: CatalogItem) {
+    onSelect(item);
+    setText(item.label);
+    setOpen(false);
+  }
+
+  return (
+    <label ref={box} className="suggest">
+      {label}
+      <input
+        value={text}
+        placeholder="Start typing a name"
+        autoComplete="off"
+        onChange={(event) => {
+          setText(event.target.value);
+          onSelect(null);
+        }}
+        onFocus={() => hits.length && setOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && hits[0]) {
+            event.preventDefault();
+            choose(hits[0]);
+          }
+        }}
+        style={{ display: "block", width: "100%", marginTop: 6 }}
+      />
+      {open && hits.length > 0 && (
+        <ul className="suggest-list">
+          {hits.map((item) => (
+            <li key={item.id}>
+              <button type="button" className="suggest-item" onClick={() => choose(item)}>
+                <span>{item.label}</span>
+                <span className="muted">{item.in_chart ? "on this chart" : "seen in other records"}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </label>
+  );
 }
 
 function LabResults({ name, rows }: { name: string; rows: LabQueryRow[] }) {

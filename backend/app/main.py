@@ -13,6 +13,7 @@ from app.api.queries import router as queries_router
 from app.config import BACKEND_ROOT, REPO_ROOT, settings
 from app.db.models import Base, Clinician
 from app.db.session import SessionLocal, engine
+from app.services.vocab import backfill_vocabulary, seed_vocabulary
 
 DIST = REPO_ROOT / "frontend" / "dist"
 API_ROOTS = {
@@ -85,7 +86,9 @@ def startup() -> None:
     try:
         if db.query(Clinician).filter(Clinician.external_id == "DOC-1001").one_or_none() is None:
             db.add(Clinician(external_id="DOC-1001", name="Dr. Meera Kapoor"))
-            db.commit()
+        seed_vocabulary(db)
+        backfill_vocabulary(db)
+        db.commit()
     finally:
         db.close()
 
